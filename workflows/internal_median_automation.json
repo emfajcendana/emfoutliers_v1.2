@@ -1,0 +1,493 @@
+{
+  "name": "Internal Median Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f0ce933e-0060-4b9d-96f3-5d68a7346107",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-528, -128],
+      "id": "0d659d65-166b-4ecb-ad9e-cc62648a311b",
+      "name": "Webhook",
+      "webhookId": "f0ce933e-0060-4b9d-96f3-5d68a7346107"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/v_top_reels",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_ANON_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_ANON_KEY" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "met_multiplier", "value": "eq.true" },
+            { "name": "transferred", "value": "eq.false" },
+            { "name": "select", "value": "*" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-304, -128],
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Get Qualifying Posts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Supabase returns a JSON array as a single item.\n// This splits it into individual n8n items for the loop.\nreturn $input.item.json.map(row => ({ json: row }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-80, -128],
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Split Into Items"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [144, -128],
+      "id": "8499df83-71c9-40d6-b39d-f39ab307cc84",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "guildId": {
+          "__rl": true,
+          "value": "1372519126249115748",
+          "mode": "list",
+          "cachedResultName": "ExpandMyFans",
+          "cachedResultUrl": "https://discord.com/channels/1372519126249115748"
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "1484303095512170638",
+          "mode": "list",
+          "cachedResultName": "creative-team",
+          "cachedResultUrl": "https://discord.com/channels/1372519126249115748/1484303095512170638"
+        },
+        "content": "=We have new Instagram posts that has been added to Winner Reskins. **[Link to airtable](https://airtable.com/app7FyiPgXY6XjkxV/tblYhTOVCI7rRJ5QA/viwesjxe3AjacFG8q?blocks=hide)**.\n\n<@&1484304325621584013>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [368, -384],
+      "id": "4be3b15f-55c5-43d8-a37c-ca30294e0652",
+      "name": "Send a message",
+      "webhookId": "8679584a-1270-4f55-8ac2-6d80f417bcf6",
+      "credentials": {
+        "discordBotApi": {
+          "id": "y9ivuvnInU6XhV0s",
+          "name": "2025.05.21 - Discord Chatbot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "app7FyiPgXY6XjkxV",
+          "mode": "list",
+          "cachedResultName": "EMF Content Creation Database",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYhTOVCI7rRJ5QA",
+          "mode": "list",
+          "cachedResultName": "Winner Reskins",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV/tblYhTOVCI7rRJ5QA"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post Code": "={{ $('Loop Over Items').item.json.post_id }}",
+            "user id": "={{ $('Loop Over Items').item.json.user_id.toString() }}",
+            "username": "={{ $('Loop Over Items').item.json.username }}",
+            "views": "={{ $('Loop Over Items').item.json.views }}",
+            "multiplier score": "={{ $('Loop Over Items').item.json.multiplier_score }}",
+            "current median": "={{ $('Loop Over Items').item.json.median_views }}",
+            "thumbnail": "={{ $('Loop Over Items').item.json.thumbnail ? [{ \"url\": $('Loop Over Items').item.json.thumbnail, \"filename\": \"display\" }] : [] }}",
+            "Post URL": "={{ $('Loop Over Items').item.json.post_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "Post Code", "displayName": "Post Code", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "Post Link", "displayName": "Post Link", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": true, "removed": true },
+            { "id": "user id", "displayName": "user id", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "username", "displayName": "username", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "model", "displayName": "model", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "array", "readOnly": false, "removed": true },
+            { "id": "potential vertical", "displayName": "potential vertical", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "array", "readOnly": false, "removed": true },
+            { "id": "views", "displayName": "views", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "number", "readOnly": false, "removed": false },
+            { "id": "thumbnail", "displayName": "thumbnail", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "array", "readOnly": false, "removed": false },
+            { "id": "current median", "displayName": "current median", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "number", "readOnly": false, "removed": false },
+            { "id": "multiplier score", "displayName": "multiplier score", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "number", "readOnly": false, "removed": false },
+            { "id": "Creative Direction Notes", "displayName": "Creative Direction Notes", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": false, "removed": true },
+            { "id": "Status", "displayName": "Status", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "options", "options": [{ "name": "Approved", "value": "Approved" }, { "name": "Rejected", "value": "Rejected" }], "readOnly": false, "removed": true },
+            { "id": "Post URL", "displayName": "Post URL", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string", "readOnly": false, "removed": false },
+            { "id": "Number of times to reskin", "displayName": "Number of times to reskin", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "number", "readOnly": false, "removed": true }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": { "typecast": true }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [368, -192],
+      "id": "58b0308a-e060-46b1-9344-c1818ed15d95",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": { "id": "1k941lbJRrZHzFTN", "name": "Master Token" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app7FyiPgXY6XjkxV",
+          "mode": "list",
+          "cachedResultName": "EMF Content Creation Database",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblBg0TAYm9benl4v",
+          "mode": "list",
+          "cachedResultName": "Model Dtb",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV/tblBg0TAYm9benl4v"
+        },
+        "filterByFormula": "={Model Alias} = \"{{ $('Loop Over Items').item.json.model }}\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [592, -192],
+      "id": "919f4a56-3074-4330-845d-8bdd83f16c56",
+      "name": "Search model",
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": { "id": "1k941lbJRrZHzFTN", "name": "Master Token" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "260a0dd9-7026-4e68-8569-b6f14cdcbf17",
+              "leftValue": "={{ $json.isEmpty() }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "false", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [816, -192],
+      "id": "2efe4aea-d61b-4d5d-9c1a-d1876fc0c81b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app7FyiPgXY6XjkxV",
+          "mode": "list",
+          "cachedResultName": "EMF Content Creation Database",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYhTOVCI7rRJ5QA",
+          "mode": "list",
+          "cachedResultName": "Winner Reskins",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV/tblYhTOVCI7rRJ5QA"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create a record').item.json.id }}",
+            "model": "=[\n\n\"{{ $('Search model').item.json.id }}\"\n\n]"
+          },
+          "matchingColumns": ["id"],
+          "schema": [
+            { "id": "id", "displayName": "id", "required": false, "defaultMatch": true, "display": true, "type": "string", "readOnly": true, "removed": false },
+            { "id": "model", "displayName": "model", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "array", "readOnly": false, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1040, -288],
+      "id": "629333e8-b1fd-4789-95d0-81e2b945b0eb",
+      "name": "Update model",
+      "credentials": {
+        "airtableTokenApi": { "id": "1k941lbJRrZHzFTN", "name": "Master Token" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/scrape_data?post_id=eq.{{ $('Loop Over Items').item.json.post_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_ANON_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_ANON_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"transferred\": true }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1264, -288],
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Update transfer status"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Supabase returns verticals as a JSON array (e.g. [\"Pegging\", \"SPH\"]).\n// Split each vertical into its own item for the Airtable lookup.\nconst newItems = [];\nconst verticals = $('Loop Over Items').item.json.verticals;\n\nif (Array.isArray(verticals)) {\n  for (const value of verticals) {\n    if (value && value.trim()) {\n      newItems.push({ json: { vertical: value.trim() } });\n    }\n  }\n} else if (typeof verticals === 'string') {\n  // Fallback: handle comma-separated string\n  for (const value of verticals.split(',').map(v => v.trim())) {\n    if (value) newItems.push({ json: { vertical: value } });\n  }\n}\n\nreturn newItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1488, -288],
+      "id": "739ca97b-1d34-4b67-acbe-67ef679dfa6a",
+      "name": "Split verticals"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app7FyiPgXY6XjkxV",
+          "mode": "list",
+          "cachedResultName": "EMF Content Creation Database",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl6uFaq8wxYmAqNg",
+          "mode": "list",
+          "cachedResultName": "Vertical Dtb",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV/tbl6uFaq8wxYmAqNg"
+        },
+        "filterByFormula": "={Verticals} = \"{{ $json.vertical }}\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1712, -288],
+      "id": "b1ccf2c5-c151-41d2-9305-4015048e5197",
+      "name": "Search vertical",
+      "credentials": {
+        "airtableTokenApi": { "id": "1k941lbJRrZHzFTN", "name": "Master Token" }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [{ "fieldToAggregate": "id" }]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1936, -288],
+      "id": "6a4acf07-b6a7-4cb8-8b52-b03147ebd648",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app7FyiPgXY6XjkxV",
+          "mode": "list",
+          "cachedResultName": "EMF Content Creation Database",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYhTOVCI7rRJ5QA",
+          "mode": "list",
+          "cachedResultName": "Winner Reskins",
+          "cachedResultUrl": "https://airtable.com/app7FyiPgXY6XjkxV/tblYhTOVCI7rRJ5QA"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create a record').item.json.id }}",
+            "potential vertical": "={{ $json.id.map(item => item).join().split(\",\") }}"
+          },
+          "matchingColumns": ["id"],
+          "schema": [
+            { "id": "id", "displayName": "id", "required": false, "defaultMatch": true, "display": true, "type": "string", "readOnly": true, "removed": false },
+            { "id": "potential vertical", "displayName": "potential vertical", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "array", "readOnly": false, "removed": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [2160, -128],
+      "id": "6ca5911e-6a81-46e4-8a63-b77fb8e25b69",
+      "name": "Update vertical",
+      "credentials": {
+        "airtableTokenApi": { "id": "1k941lbJRrZHzFTN", "name": "Master Token" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://YOUR_SUPABASE_PROJECT.supabase.co/rest/v1/scrape_data?post_id=eq.{{ $('Loop Over Items').item.json.post_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_ANON_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_ANON_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"transferred\": true }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, -96],
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Model not existing"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "flows.expandmyfans.com",
+            "user-agent": "Mozilla/5.0 (compatible; Google-Apps-Script; beanserver; +https://script.google.com; id: UAEmdDd9Y1HyDHp4RpumUcH2PiTiiXfgANBQ)",
+            "content-length": "141",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "107.178.192.103",
+            "cf-ipcountry": "US",
+            "cf-ray": "9de779c0ea40d62c-IAD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "content-type": "application/json",
+            "via": "2.0 Caddy",
+            "x-forwarded-for": "172.70.35.85",
+            "x-forwarded-host": "flows.expandmyfans.com",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "status": "completed",
+            "transferredCount": 467,
+            "sheetId": "18i2vysyRw_JwELs7xd_aPGyO4VfiHaoHvOAefHrCnzw",
+            "timestamp": "2026-03-18T21:54:23.368Z"
+          },
+          "webhookUrl": "https://flows.expandmyfans.com/webhook-test/f0ce933e-0060-4b9d-96f3-5d68a7346107",
+          "executionMode": "test"
+        },
+        "pairedItem": { "item": 0 }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Get Qualifying Posts", "type": "main", "index": 0 }]]
+    },
+    "Get Qualifying Posts": {
+      "main": [[{ "node": "Split Into Items", "type": "main", "index": 0 }]]
+    },
+    "Split Into Items": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Items": {
+      "main": [
+        [{ "node": "Send a message", "type": "main", "index": 0 }],
+        [{ "node": "Create a record", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create a record": {
+      "main": [[{ "node": "Search model", "type": "main", "index": 0 }]]
+    },
+    "Search model": {
+      "main": [[{ "node": "If", "type": "main", "index": 0 }]]
+    },
+    "If": {
+      "main": [
+        [{ "node": "Update model", "type": "main", "index": 0 }],
+        [{ "node": "Model not existing", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update model": {
+      "main": [[{ "node": "Update transfer status", "type": "main", "index": 0 }]]
+    },
+    "Update transfer status": {
+      "main": [[{ "node": "Split verticals", "type": "main", "index": 0 }]]
+    },
+    "Split verticals": {
+      "main": [[{ "node": "Search vertical", "type": "main", "index": 0 }]]
+    },
+    "Search vertical": {
+      "main": [[{ "node": "Aggregate", "type": "main", "index": 0 }]]
+    },
+    "Aggregate": {
+      "main": [[{ "node": "Update vertical", "type": "main", "index": 0 }]]
+    },
+    "Update vertical": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Model not existing": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "44e9543b-a08d-46a6-93b1-dee6722b44a3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "221aa3f6bbc89a4e540ea944b3d453787c6b0cc4b6d3b9acb8655c431f71eb63"
+  },
+  "id": "DYSg7ZkltMDLmg9t",
+  "tags": []
+}

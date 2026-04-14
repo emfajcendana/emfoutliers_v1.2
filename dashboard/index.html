@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Winners Identifier — EMF</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
+    .badge { background: #21262d; border: 1px solid #30363d; border-radius: 4px; font-size: 11px; padding: 2px 8px; }
+    .filter-btn { background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #8b949e; cursor: pointer; font-size: 12px; padding: 5px 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .filter-btn:hover { border-color: #58a6ff; color: #e6edf3; }
+    .filter-btn select { background: transparent; border: none; color: inherit; font-size: 12px; outline: none; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #161b22; color: #8b949e; font-weight: 500; padding: 8px 12px; text-align: left; border-bottom: 1px solid #30363d; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+    td { padding: 7px 12px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+    tr:hover td { background: #1c2128; }
+    .vertical-tag { display: inline-block; background: #1f2937; border: 1px solid #374151; border-radius: 4px; font-size: 10px; padding: 1px 6px; margin: 1px 2px; color: #9ca3af; }
+    .winner-dot { width: 6px; height: 6px; background: #3fb950; border-radius: 50%; display: inline-block; }
+    .views-big { font-weight: 600; color: #e6edf3; }
+    .views-winner { color: #3fb950; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .chart-container { position: relative; width: 100%; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0d1117; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    .date-input { background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 12px; padding: 5px 10px; outline: none; }
+    .date-input:focus { border-color: #58a6ff; }
+    .empty-state { color: #8b949e; text-align: center; padding: 40px; }
+    .loading { color: #8b949e; text-align: center; padding: 20px; }
+    .config-warning { background: #2d1b00; border: 1px solid #d29922; border-radius: 8px; padding: 16px; margin-bottom: 16px; color: #d29922; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: #e6edf3; }
+    .sort-arrow { margin-left: 3px; font-size: 9px; color: #58a6ff; }
+
+    /* ── Login gate ── */
+    #login-gate {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #0d1117;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #login-gate.hidden { display: none; }
+    .login-card {
+      background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+      padding: 40px 44px; width: 100%; max-width: 360px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .login-logo {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: linear-gradient(135deg,#0a1f12,#0f2d1a);
+      border: 1px solid #2ea043;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 0 0 16px rgba(46,160,67,0.2);
+    }
+    .login-title { font-size: 17px; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }
+    .login-sub   { font-size: 12px; color: #8b949e; margin-bottom: 28px; }
+    .login-label { font-size: 11px; color: #8b949e; align-self: flex-start; margin-bottom: 6px; letter-spacing: .04em; }
+    .login-input {
+      width: 100%; box-sizing: border-box;
+      background: #21262d; border: 1px solid #30363d; border-radius: 8px;
+      color: #e6edf3; font-size: 14px; padding: 10px 14px;
+      outline: none; margin-bottom: 6px; letter-spacing: .08em;
+    }
+    .login-input:focus { border-color: #58a6ff; }
+    .login-input.error { border-color: #f87171; }
+    .login-error { font-size: 11px; color: #f87171; align-self: flex-start; min-height: 16px; margin-bottom: 16px; }
+    .login-btn {
+      width: 100%; padding: 10px; border-radius: 8px; border: none; cursor: pointer;
+      background: #238636; color: #fff; font-size: 13px; font-weight: 600;
+      letter-spacing: .02em; transition: background .15s;
+    }
+    .login-btn:hover { background: #2ea043; }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+
+  <!-- ═══ LOGIN GATE ═══ -->
+  <div id="login-gate">
+    <div class="login-card">
+      <div class="login-logo">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="#3fb950">
+          <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+        </svg>
+      </div>
+      <div class="login-title">Winners Identifier</div>
+      <div class="login-sub">EMF Dashboard · Restricted Access</div>
+      <div class="login-label">ADMIN KEY</div>
+      <input id="login-input" class="login-input" type="password" placeholder="Enter password" autocomplete="current-password" />
+      <div id="login-error" class="login-error"></div>
+      <button class="login-btn" onclick="submitLogin()">Access Dashboard</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       SUPABASE CONFIG — replace with your values
+  ════════════════════════════════════════════ -->
+  <script>
+    const SUPABASE_URL  = 'https://gcsblemmrxzgbkndzybd.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c';
+    const WINNER_VIEWS  = 100000;  // views threshold for "winner"
+    const DASHBOARD_PASSWORD = 'emf2025';  // ← change this to your preferred password
+  </script>
+
+  <div class="max-w-screen-2xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <div class="text-xs text-gray-500 mb-1">WINNERS IDENTIFIER</div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-xl font-semibold tracking-wide">Top Reels Dashboard</h1>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div style="background:linear-gradient(135deg,#0a1f12 0%,#0f2d1a 100%); border:1px solid #2ea043; border-radius:12px; padding:14px 28px; display:flex; flex-direction:column; align-items:center; min-width:120px; box-shadow:0 0 18px rgba(46,160,67,0.18), inset 0 1px 0 rgba(63,185,80,0.12);">
+          <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="#3fb950"><path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/></svg>
+            <div style="font-size:9px; font-weight:700; letter-spacing:.12em; color:#3fb950; text-transform:uppercase;">Winners</div>
+          </div>
+          <div id="winner-count" style="font-size:2rem; font-weight:800; color:#3fb950; line-height:1; letter-spacing:-.02em;">—</div>
+          <div style="font-size:9px; color:#4a9a5a; margin-top:4px; letter-spacing:.04em;">≥ 100k views</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config warning -->
+    <div id="config-warning" class="config-warning" style="display:none">
+      ⚠ Supabase not configured. Edit the <code>SUPABASE_URL</code> and <code>SUPABASE_ANON</code> values at the top of this file.
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="card p-3 mb-4 flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500">Date</span>
+        <input type="date" id="date-from" class="date-input" />
+        <span class="text-xs text-gray-500">–</span>
+        <input type="date" id="date-to" class="date-input" />
+      </div>
+      <div class="w-px h-5 bg-gray-700 mx-1"></div>
+      <div class="filter-btn">
+        <span class="text-gray-500">Model</span>
+        <select id="filter-model"><option value="">All</option></select>
+      </div>
+      <div class="filter-btn">
+        <span class="text-gray-500">Username</span>
+        <select id="filter-username"><option value="">All</option></select>
+      </div>
+      <div class="filter-btn">
+        <span class="text-gray-500">Team</span>
+        <select id="filter-team"><option value="">All</option></select>
+      </div>
+      <div class="filter-btn">
+        <span class="text-gray-500">QM</span>
+        <select id="filter-qm"><option value="">All</option></select>
+      </div>
+      <div class="filter-btn">
+        <span class="text-gray-500">TM</span>
+        <select id="filter-tm"><option value="">All</option></select>
+      </div>
+      <div class="filter-btn">
+        <span class="text-gray-500">Vertical</span>
+        <select id="filter-vertical"><option value="">All</option></select>
+      </div>
+      <button onclick="applyFilters()" class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md font-medium">Apply</button>
+      <button onclick="resetFilters()" class="px-3 py-1.5 text-gray-400 hover:text-gray-200 text-xs">Reset</button>
+      <button onclick="hardRefresh()" class="px-3 py-1.5 text-gray-500 hover:text-gray-300 text-xs" title="Reload all data from database">↺ Refresh</button>
+    </div>
+
+    <!-- ═══ TOP REELS TABLE ═══ -->
+    <div class="card mb-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+        <h2 class="text-sm font-semibold">Top Reels <span id="table-count" class="text-gray-500 font-normal text-xs ml-1"></span></h2>
+      </div>
+      <div style="overflow-x:auto; max-height: 480px; overflow-y:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable" data-col="model" onclick="sortTable('model')">Model<span class="sort-arrow" id="sort-arrow-model"></span></th>
+              <th class="sortable" data-col="username" onclick="sortTable('username')">Username<span class="sort-arrow" id="sort-arrow-username"></span></th>
+              <th class="sortable" data-col="acc_no" onclick="sortTable('acc_no')">Acc<span class="sort-arrow" id="sort-arrow-acc_no"></span></th>
+              <th class="sortable" data-col="post_timestamp" onclick="sortTable('post_timestamp')">Post Date<span class="sort-arrow" id="sort-arrow-post_timestamp"></span></th>
+              <th class="sortable" data-col="owner" onclick="sortTable('owner')">Owner<span class="sort-arrow" id="sort-arrow-owner"></span></th>
+              <th>Curr Vert</th>
+              <th class="sortable" data-col="qm" onclick="sortTable('qm')">QM<span class="sort-arrow" id="sort-arrow-qm"></span></th>
+              <th class="sortable" data-col="tm" onclick="sortTable('tm')">TM<span class="sort-arrow" id="sort-arrow-tm"></span></th>
+              <th class="sortable" data-col="views" onclick="sortTable('views')" style="text-align:right">Views<span class="sort-arrow" id="sort-arrow-views"></span></th>
+              <th class="sortable" data-col="multiplier_score" onclick="sortTable('multiplier_score')" style="text-align:right">Multiplier<span class="sort-arrow" id="sort-arrow-multiplier_score"></span></th>
+              <th class="sortable" data-col="median_views" onclick="sortTable('median_views')" style="text-align:right">Median<span class="sort-arrow" id="sort-arrow-median_views"></span></th>
+              <th style="text-align:center">Met?</th>
+            </tr>
+          </thead>
+          <tbody id="reels-table-body">
+            <tr><td colspan="13" class="loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ VIEWS TIMELINE ═══ -->
+    <div class="card mb-4 p-4">
+      <h2 class="text-sm font-semibold mb-3">Views Timeline</h2>
+      <div class="chart-container" style="height:300px">
+        <canvas id="timeline-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- ═══ WINNER STATS 2x2 GRID ═══ -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <div class="card p-4">
+        <h2 class="text-sm font-semibold mb-1">Winner Count per Model</h2>
+        <p class="text-xs text-gray-500 mb-3">100k views or more</p>
+        <div class="chart-container" style="height:220px">
+          <canvas id="winner-count-model-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <h2 class="text-sm font-semibold mb-1">Winner Rate per Model</h2>
+        <p class="text-xs text-gray-500 mb-3">100k posts / all posts (all-time)</p>
+        <div class="chart-container" style="height:220px">
+          <canvas id="winner-rate-model-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <h2 class="text-sm font-semibold mb-1">Winner Count per Account</h2>
+        <p class="text-xs text-gray-500 mb-3">100k views or more</p>
+        <div class="chart-container" style="height:280px">
+          <canvas id="winner-count-account-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <h2 class="text-sm font-semibold mb-1">Winner Rate per Account</h2>
+        <p class="text-xs text-gray-500 mb-3">100k posts / all posts (all-time)</p>
+        <div class="chart-container" style="height:280px">
+          <canvas id="winner-rate-account-chart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /max-w -->
+
+<script>
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+let db = null;
+let charts       = {};
+let allData      = [];    // cached top reels rows
+let timelineData = [];    // cached timeline rows
+let activeModels = [];    // active model names from model_config
+let sortState    = { col: 'views', dir: 'desc' };
+
+function initSupabase() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+    document.getElementById('config-warning').style.display = 'block';
+    return false;
+  }
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  return true;
+}
+
+// ══════════════════════════════════════════════════
+// DATE DEFAULTS — last 21 days, end date = today − 2 (Philippine time)
+// ══════════════════════════════════════════════════
+function setDefaultDates() {
+  // Use Philippine time (UTC+8) so the cutoff matches local business hours
+  const nowPHT = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const to   = new Date(nowPHT);
+  to.setDate(to.getDate() - 2);
+  const from = new Date(nowPHT);
+  from.setDate(from.getDate() - 21);
+  document.getElementById('date-to').value   = to.toISOString().slice(0,10);
+  document.getElementById('date-from').value = from.toISOString().slice(0,10);
+}
+
+function getFilters() {
+  return {
+    dateFrom : document.getElementById('date-from').value,
+    dateTo   : document.getElementById('date-to').value,
+    model    : document.getElementById('filter-model').value,
+    username : document.getElementById('filter-username').value,
+    team     : document.getElementById('filter-team').value,
+    qm       : document.getElementById('filter-qm').value,
+    tm       : document.getElementById('filter-tm').value,
+    vertical : document.getElementById('filter-vertical').value,
+    limit    : 50,
+  };
+}
+
+function resetFilters() {
+  setDefaultDates();
+  ['filter-model','filter-username','filter-team','filter-qm','filter-tm','filter-vertical']
+    .forEach(id => document.getElementById(id).value = '');
+  applyFilters();
+}
+
+function hardRefresh() {
+  loadFilterOptions();
+  applyFilters();
+}
+
+// ══════════════════════════════════════════════════
+// FETCH FILTER OPTIONS
+// ══════════════════════════════════════════════════
+async function loadFilterOptions() {
+  if (!db) return;
+
+  // Load active models from model_config
+  const { data: modelCfg } = await db
+    .from('model_config')
+    .select('model_name')
+    .eq('is_active', true)
+    .order('model_name');
+
+  if (modelCfg) {
+    activeModels = modelCfg.map(r => r.model_name);
+    populateSelect('filter-model', activeModels);
+  }
+
+  // Load team/qm/tm/vertical from v_filter_options — a DISTINCT view over
+  // mv_post_latest joined with model_config (active only). Returns at most a
+  // few hundred rows regardless of total post count, so no row-cap risk.
+  const { data, error } = await db
+    .from('v_filter_options')
+    .select('team, qm, tm, curr_vert');
+
+  if (error) {
+    showError(`Failed to load filter options: ${error.message} (code: ${error.code})`);
+    return;
+  }
+  if (data) {
+    const teams     = [...new Set(data.map(r => r.team).filter(Boolean))].sort();
+    const qms       = [...new Set(data.map(r => r.qm).filter(Boolean))].sort();
+    const tms       = [...new Set(data.map(r => r.tm).filter(Boolean))].sort();
+    const verticals = [...new Set(
+      data.flatMap(r => String(r.curr_vert || '').split(',').map(v => v.trim()).filter(Boolean))
+    )].sort();
+    populateSelect('filter-team',     teams);
+    populateSelect('filter-qm',       qms);
+    populateSelect('filter-tm',       tms);
+    populateSelect('filter-vertical', verticals);
+  }
+
+  // Load usernames belonging to active models only.
+  // v_winner_stats_account has one row per (username × model), so the total
+  // row count is tiny and well within Supabase's default cap.
+  let userQ = db
+    .from('v_winner_stats_account')
+    .select('username')
+    .order('username');
+  if (activeModels.length) userQ = userQ.in('model', activeModels);
+
+  const { data: userRows } = await userQ;
+  if (userRows) {
+    const usernames = [...new Set(userRows.map(r => r.username).filter(Boolean))].sort();
+    populateSelect('filter-username', usernames);
+  }
+
+}
+
+function populateSelect(id, values) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+}
+
+// ══════════════════════════════════════════════════
+// FETCH & RENDER
+// ══════════════════════════════════════════════════
+async function applyFilters() {
+  if (!db) return;
+  const f = getFilters();
+
+  await Promise.all([
+    fetchTopReels(f),
+    fetchTimeline(f),
+    fetchWinnerStats(f),
+    fetchWinnerCount(f),
+  ]);
+}
+
+// ─── Top Reels Table ───
+async function fetchTopReels(f) {
+  const tbody = document.getElementById('reels-table-body');
+  tbody.innerHTML = '<tr><td colspan="13" class="loading">Loading…</td></tr>';
+
+  let q = db
+    .from('v_top_reels')
+    .select('post_url,post_timestamp,model,username,acc_no,owner,qm,tm,curr_vert,views,multiplier_score,median_views,is_winner,trial_type')
+    .order('views', { ascending: false })
+    .limit(f.limit);
+
+  if (f.dateFrom) q = q.gte('post_timestamp', f.dateFrom);
+  if (f.dateTo)   q = q.lte('post_timestamp', f.dateTo);
+  if (f.model)    q = q.eq('model', f.model);
+  else if (activeModels.length) q = q.in('model', activeModels);
+  if (f.username) q = q.eq('username', f.username);
+  if (f.team)     q = q.eq('team', f.team);
+  if (f.qm)       q = q.eq('qm', f.qm);
+  if (f.tm)       q = q.eq('tm', f.tm);
+  if (f.vertical) q = q.ilike('curr_vert', `%${f.vertical}%`);
+
+  const { data, error } = await q;
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="13" class="empty-state text-red-400">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  allData = data || [];
+
+  if (allData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No posts found for the selected filters.</td></tr>';
+    document.getElementById('table-count').textContent = '';
+    return;
+  }
+
+  document.getElementById('table-count').textContent = `(${allData.length} rows)`;
+
+
+  renderTableRows(allData);
+}
+
+function sortTable(col) {
+  if (sortState.col === col) {
+    sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortState.col = col;
+    // numeric cols default desc, text cols default asc
+    sortState.dir = ['views','multiplier_score','median_views','acc_no'].includes(col) ? 'desc' : 'asc';
+  }
+  renderTableRows(allData);
+}
+
+function renderTableRows(data) {
+  const tbody = document.getElementById('reels-table-body');
+  const { col, dir } = sortState;
+
+  const sorted = [...data].sort((a, b) => {
+    let av = a[col], bv = b[col];
+    if (av == null) av = dir === 'asc' ? '\uFFFF' : '';
+    if (bv == null) bv = dir === 'asc' ? '\uFFFF' : '';
+    if (typeof av === 'string' && typeof bv === 'string')
+      return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    av = parseFloat(av) || 0;
+    bv = parseFloat(bv) || 0;
+    return dir === 'asc' ? av - bv : bv - av;
+  });
+
+  // Update sort arrow indicators
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const arrow = document.getElementById('sort-arrow-' + col);
+  if (arrow) arrow.textContent = dir === 'asc' ? ' ▲' : ' ▼';
+
+  tbody.innerHTML = sorted.map((r, i) => `
+    <tr>
+      <td class="text-gray-600">${i + 1}</td>
+      <td>
+        ${r.is_winner ? '<span class="winner-dot mr-1"></span>' : ''}
+        <a href="${r.post_url}" target="_blank">${esc(r.model)}</a>
+      </td>
+      <td class="text-gray-300">${esc(r.username)}</td>
+      <td class="text-gray-500">${r.acc_no ?? '—'}</td>
+      <td class="text-gray-400">${r.post_timestamp ? fmtDate(r.post_timestamp) : '—'}</td>
+      <td class="text-gray-400">${esc(r.owner) || '—'}</td>
+      <td class="text-gray-300">${esc(r.curr_vert) || '—'}</td>
+      <td class="text-gray-400">${esc(r.qm) || '—'}</td>
+      <td class="text-gray-400">${esc(r.tm) || '—'}</td>
+      <td class="text-right ${r.is_winner ? 'views-winner' : 'views-big'}">${fmtNum(r.views)}</td>
+      <td class="text-right text-gray-400">${r.multiplier_score != null ? r.multiplier_score + 'x' : '—'}</td>
+      <td class="text-right text-gray-500">${fmtNum(r.median_views)}</td>
+      <td class="text-center" style="font-weight:600">${((r.multiplier_score != null && r.multiplier_score >= 2.5) || r.views >= 100000) ? '<span style="color:#3fb950">Yes</span>' : '<span style="color:#f87171">No</span>'}</td>
+    </tr>
+  `).join('');
+}
+
+// ─── Views Timeline ───
+async function fetchTimeline(f) {
+  const topLimit = 50;
+
+  // Step 1: top N Reel post_ids by views within the date range + all active filters
+  let topQ = db
+    .from('v_top_reels')
+    .select('post_id')
+    .ilike('content_type', '%reel%')
+    .order('views', { ascending: false })
+    .limit(topLimit);
+
+  if (f.dateFrom) topQ = topQ.gte('post_timestamp', f.dateFrom);
+  if (f.dateTo)   topQ = topQ.lte('post_timestamp', f.dateTo);
+  if (f.model)    topQ = topQ.eq('model', f.model);
+  else if (activeModels.length) topQ = topQ.in('model', activeModels);
+  if (f.username) topQ = topQ.eq('username', f.username);
+  if (f.team)     topQ = topQ.eq('team', f.team);
+  if (f.qm)       topQ = topQ.eq('qm', f.qm);
+  if (f.tm)       topQ = topQ.eq('tm', f.tm);
+  if (f.vertical) topQ = topQ.ilike('curr_vert', `%${f.vertical}%`);
+
+  const { data: topPosts, error: topError } = await topQ;
+  if (topError) return showTimelineError(topError.message);
+
+  const postIds = (topPosts || []).map(r => r.post_id).filter(Boolean);
+  if (!postIds.length) { renderTimeline([]); return; }
+
+  // Step 2: fetch scrape history for those post_ids.
+  // If a dateFrom filter is active, start the scrape window from that date so
+  // posts published early in the range still have visible scrape history.
+  // If no dateFrom, fall back to a 21-day window from dateTo to cap row counts.
+  let scrapeCutoff;
+  if (f.dateFrom) {
+    scrapeCutoff = f.dateFrom;
+  } else {
+    const windowEnd   = f.dateTo ? new Date(f.dateTo) : new Date();
+    const windowStart = new Date(windowEnd);
+    windowStart.setDate(windowStart.getDate() - 21);
+    scrapeCutoff = windowStart.toISOString().slice(0, 10);
+  }
+
+  const { data, error } = await db
+    .from('v_views_timeline')
+    .select('scrape_date,post_id,post_url,username,views')
+    .in('post_id', postIds)
+    .gte('scrape_date', scrapeCutoff)
+    .order('scrape_date', { ascending: true });
+  if (error) return showTimelineError(error.message);
+
+  timelineData = data || [];
+  renderTimeline(timelineData);
+}
+
+function showTimelineError(msg) {
+  console.error('[Timeline]', msg);
+  if (charts.timeline) charts.timeline.destroy();
+  const ctx = document.getElementById('timeline-chart').getContext('2d');
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = '#f87171';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Timeline error: ' + msg, 16, 40);
+}
+
+function renderTimeline(rows) {
+  // Group by post_id — one line per post, x = scrape_date, y = views
+  const grouped = {};
+  rows.forEach(r => {
+    const key = r.post_id || r.post_url;
+    if (!grouped[key]) {
+      grouped[key] = { username: r.username, post_url: r.post_url, points: [] };
+    }
+    grouped[key].points.push({ x: r.scrape_date, y: r.views, post_url: r.post_url });
+  });
+
+  const groups = Object.values(grouped)
+    .map(g => ({ ...g, maxViews: Math.max(...g.points.map(p => p.y || 0)) }))
+    .sort((a, b) => b.maxViews - a.maxViews);
+
+  const palette = [
+    '#58a6ff','#3fb950','#f78166','#d2a8ff','#ffa657',
+    '#79c0ff','#56d364','#ff7b72','#bc8cff','#e3b341',
+    '#39d353','#ff6e96','#a5d6ff','#ffa500','#00b4d8',
+    '#f0e68c','#20b2aa','#ff8c00','#da70d6','#7fffd4',
+  ];
+
+  const datasets = groups.map((g, i) => ({
+    label           : g.username,
+    data            : g.points.sort((a, b) => a.x.localeCompare(b.x)),
+    borderColor     : palette[i % palette.length],
+    backgroundColor : palette[i % palette.length] + '22',
+    pointRadius     : 3,
+    pointHoverRadius: 5,
+    borderWidth     : 1.5,
+    tension         : 0.1,
+    fill            : false,
+  }));
+
+  if (charts.timeline) charts.timeline.destroy();
+  const ctx = document.getElementById('timeline-chart').getContext('2d');
+  charts.timeline = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const el = elements[0];
+          const point = charts.timeline.data.datasets[el.datasetIndex].data[el.index];
+          if (point.post_url) window.open(point.post_url, '_blank');
+        }
+      },
+      onHover: (event, elements) => {
+        const canvas = event.native?.target;
+        if (canvas) canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items.length ? 'Scraped: ' + fmtDate(items[0].raw.x) : '',
+            label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.raw.y)} views`,
+            afterLabel: ctx => ctx.raw.post_url ? ' 🔗 Click to open post' : '',
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'day', tooltipFormat: 'MMM d, yyyy', displayFormats: { day: 'MMM d', month: 'MMM yyyy' } },
+          grid:  { color: '#21262d' },
+          ticks: { color: '#6e7681', font: { size: 10 }, maxTicksLimit: 12 }
+        },
+        y: {
+          grid:  { color: '#21262d' },
+          ticks: { color: '#6e7681', font: { size: 10 }, callback: v => fmtNumShort(v) }
+        }
+      }
+    }
+  });
+}
+
+// ─── Winner Count (server-side COUNT — accurate regardless of row limits) ───
+async function fetchWinnerCount(f) {
+  let q = db
+    .from('v_top_reels')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_winner', true);
+
+  if (f.dateFrom) q = q.gte('post_timestamp', f.dateFrom);
+  if (f.dateTo)   q = q.lte('post_timestamp', f.dateTo);
+  if (f.model)    q = q.eq('model', f.model);
+  else if (activeModels.length) q = q.in('model', activeModels);
+  if (f.username) q = q.eq('username', f.username);
+  if (f.team)     q = q.eq('team', f.team);
+  if (f.qm)       q = q.eq('qm', f.qm);
+  if (f.tm)       q = q.eq('tm', f.tm);
+  if (f.vertical) q = q.ilike('curr_vert', `%${f.vertical}%`);
+
+  const { count } = await q;
+  document.getElementById('winner-count').textContent = count ?? 0;
+}
+
+// ─── Winner Stats Charts ───
+async function fetchWinnerStats(f) {
+  // Single RPC call — computes winner count and rate per model/account
+  // server-side with all filters applied. Returns aggregated rows so
+  // there is no row-cap risk regardless of total post count.
+  const params = {
+    p_date_from:     f.dateFrom || null,
+    p_date_to:       f.dateTo   || null,
+    p_model:         f.model    || null,
+    p_username:      f.username || null,
+    p_team:          f.team     || null,
+    p_qm:            f.qm       || null,
+    p_tm:            f.tm       || null,
+    p_vertical:      f.vertical || null,
+    p_active_models: (!f.model && activeModels.length) ? activeModels : null,
+  };
+
+  const { data: stats, error } = await db.rpc('get_winner_stats', params);
+  if (error) { console.error('fetchWinnerStats RPC error:', error); return; }
+
+  const modelData = (stats || [])
+    .filter(r => r.entity_type === 'model' && r.winner_count > 0)
+    .map(r => ({ model: r.entity_name, winner_count: Number(r.winner_count), winner_rate_pct: Number(r.winner_rate_pct) }))
+    .sort((a, b) => b.winner_count - a.winner_count);
+
+  const accountData = (stats || [])
+    .filter(r => r.entity_type === 'account' && r.winner_count > 0)
+    .map(r => ({ username: r.entity_name, winner_count: Number(r.winner_count), winner_rate_pct: Number(r.winner_rate_pct) }))
+    .sort((a, b) => b.winner_count - a.winner_count);
+
+  renderBarChart('winner-count-model-chart',   modelData.map(r => r.model),    modelData.map(r => r.winner_count),    'Winners',       false);
+  renderBarChart('winner-rate-model-chart',    modelData.map(r => r.model),    modelData.map(r => r.winner_rate_pct), 'Winner Rate %', true);
+  renderBarChart('winner-count-account-chart', accountData.map(r => r.username), accountData.map(r => r.winner_count),    'Winners',       false);
+  renderBarChart('winner-rate-account-chart',  accountData.map(r => r.username), accountData.map(r => r.winner_rate_pct), 'Winner Rate %', true);
+}
+
+function renderBarChart(canvasId, labels, values, label, isPercent) {
+  if (charts[canvasId]) charts[canvasId].destroy();
+
+  // Sort descending so highest value appears at the top of the horizontal bar chart
+  const pairs = labels.map((l,i) => ({ l, v: parseFloat(values[i]) || 0 }))
+                       .sort((a,b) => b.v - a.v);
+
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  charts[canvasId] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: pairs.map(p => p.l),
+      datasets: [{
+        label,
+        data            : pairs.map(p => p.v),
+        backgroundColor : pairs.map(p => p.v > 0 ? '#1d4ed8' : '#21262d'),
+        borderColor     : pairs.map(p => p.v > 0 ? '#3b82f6' : '#30363d'),
+        borderWidth     : 1,
+        borderRadius    : 3,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.x}${isPercent ? '%' : ''}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid : { color: '#21262d' },
+          ticks: { color: '#6e7681', font: { size: 10 }, callback: v => isPercent ? v + '%' : v },
+        },
+        y: {
+          grid : { display: false },
+          ticks: { color: '#8b949e', font: { size: 10 } }
+        }
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function fmtNum(n) {
+  if (n == null) return '—';
+  return Math.round(n).toLocaleString();
+}
+function fmtNumShort(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'k';
+  return n;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Listen for filter changes on date inputs
+['date-from','date-to'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+
+// ══════════════════════════════════════════════════
+// ERROR DISPLAY
+// ══════════════════════════════════════════════════
+function showError(msg) {
+  console.error('[Dashboard]', msg);
+  const w = document.getElementById('config-warning');
+  w.style.display = 'block';
+  w.textContent = '⚠ ' + msg;
+  document.getElementById('reels-table-body').innerHTML =
+    `<tr><td colspan="13" class="empty-state" style="color:#f87171">${msg}</td></tr>`;
+}
+
+// ══════════════════════════════════════════════════
+// BOOTSTRAP
+// ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// LOGIN GATE
+// ══════════════════════════════════════════════════
+function checkAuth() {
+  return sessionStorage.getItem('emf_auth') === 'ok';
+}
+
+function submitLogin() {
+  const input = document.getElementById('login-input');
+  const errEl = document.getElementById('login-error');
+  if (input.value === DASHBOARD_PASSWORD) {
+    sessionStorage.setItem('emf_auth', 'ok');
+    document.getElementById('login-gate').classList.add('hidden');
+    errEl.textContent = '';
+    input.classList.remove('error');
+    startDashboard();
+  } else {
+    input.classList.add('error');
+    errEl.textContent = 'Incorrect password. Try again.';
+    input.value = '';
+    input.focus();
+  }
+}
+
+// Allow Enter key to submit
+document.getElementById('login-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitLogin();
+});
+
+// ══════════════════════════════════════════════════
+// DASHBOARD INIT
+// ══════════════════════════════════════════════════
+async function startDashboard() {
+  try {
+    log('init: start');
+    setDefaultDates();
+
+    if (!initSupabase()) return;
+    log('init: supabase client created');
+
+    await loadFilterOptions();
+    log('init: filter options loaded, starting applyFilters');
+
+    await applyFilters();
+    log('init: applyFilters done');
+
+  } catch(e) {
+    showError('Unexpected error: ' + e.message);
+    console.error(e);
+  }
+}
+
+(async function init() {
+  if (checkAuth()) {
+    document.getElementById('login-gate').classList.add('hidden');
+    await startDashboard();
+  } else {
+    document.getElementById('login-input').focus();
+  }
+})();
+
+function log(msg) {
+  console.log('[Dashboard]', msg);
+}
+</script>
+</body>
+</html>

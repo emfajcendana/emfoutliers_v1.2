@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 install:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -m venv /tmp/xlvenv)",
+      "Bash(/tmp/xlvenv/bin/pip install:*)",
+      "Bash(/tmp/xlvenv/bin/python3 -c ':*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/python tools/import_xlsx.py \".tmp/EMF_IG Tracking MEDIAN.xlsx\")",
+      "Bash(python3 -m http.server 8080)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' 'https://gcsblemmrxzgbkndzybd.supabase.co/rest/v1/v_top_reels?limit=1' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c')",
+      "Bash(curl -s 'https://gcsblemmrxzgbkndzybd.supabase.co/rest/v1/v_top_reels?limit=2&select=post_id,model,username,views,post_timestamp' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c')",
+      "Bash(curl -s 'https://gcsblemmrxzgbkndzybd.supabase.co/rest/v1/v_top_reels?select=post_timestamp&order=post_timestamp.desc&limit=3' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdjc2JsZW1tcnh6Z2JrbmR6eWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NTA1NzEsImV4cCI6MjA5MTMyNjU3MX0.HQRkSRseUhDn80va5OBlurgVqMygQ1pHOhbsuyMrB5c')"
+    ]
+  }
+}
