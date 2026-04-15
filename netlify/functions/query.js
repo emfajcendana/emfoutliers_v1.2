@@ -1,4 +1,4 @@
-const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 // ── Auth ──────────────────────────────────────────────
@@ -7,8 +7,12 @@ function verifyToken(event) {
   const token = auth.replace(/^Bearer\s+/i, '');
   if (!token) return false;
   try {
-    jwt.verify(token, process.env.JWT_SECRET);
-    return true;
+    const [payload, sig] = token.split('.');
+    if (!payload || !sig) return false;
+    const expected = crypto.createHmac('sha256', process.env.JWT_SECRET).update(payload).digest('base64url');
+    if (sig !== expected) return false;
+    const { exp } = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    return Date.now() < exp;
   } catch {
     return false;
   }

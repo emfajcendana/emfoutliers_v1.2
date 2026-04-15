@@ -1,4 +1,10 @@
-const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+
+function makeToken(secret) {
+  const payload = Buffer.from(JSON.stringify({ ok: true, exp: Date.now() + 12 * 60 * 60 * 1000 })).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -19,7 +25,7 @@ exports.handler = async (event) => {
     };
   }
 
-  const token = jwt.sign({ ok: true }, process.env.JWT_SECRET, { expiresIn: '12h' });
+  const token = makeToken(process.env.JWT_SECRET);
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
