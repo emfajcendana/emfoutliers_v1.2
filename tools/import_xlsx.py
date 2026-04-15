@@ -169,7 +169,7 @@ def main(xlsx_path: str):
         views         = to_float(row[8]) or 0.0
         scrape_date   = parse_date(row[9])
         username      = str(row[10]).strip() if row[10] else None
-        model_code    = row[11]
+        # row[11] = model_code       — dropped from DB, skip
         model_stage   = row[12]
         x_score       = to_float(row[13])
         followers     = to_float(row[14])
@@ -177,16 +177,16 @@ def main(xlsx_path: str):
         tracking_link = row[16]
         acc_no        = to_int(row[17])
         trial         = row[18]
-        views_gained  = to_float(row[19]) or 0.0
-        datetrack     = str(row[20]).strip() if row[20] else None
-        thumbnail     = row[21]
+        # row[19] = views_gained     — dropped, computed via LAG() in DB
+        # row[20] = datetrackinglink — dropped, skip
+        # row[21] = thumbnail        — dropped, skip
         shared_feed   = bool(row[22]) if row[22] is not None else None
-        curr_vert     = row[23]
+        # row[23] = curr_vert        — dropped, derived from latest verticals per username
         user_id       = to_int(row[24])
         talent_mgr    = row[25]
-        curr_user     = row[26]
-        curr_model    = row[27]
-        curr_tm       = row[28]
+        # row[26] = curr_user        — dropped, derived from latest username per user_id
+        # row[27] = curr_model       — dropped, derived from account_model table
+        # row[28] = curr_tm          — dropped, derived from latest talent_manager per user_id
         team          = row[29]
 
         # ── require at minimum a username and scrape date ─────────────────────
@@ -215,7 +215,6 @@ def main(xlsx_path: str):
             'views':             views,
             'scrape_date':       scrape_date,
             'username':          username,
-            'model_code':        str(model_code) if model_code else None,
             'model_stage_name':  str(model_stage) if model_stage else None,
             'x_score':           x_score,
             'followers':         followers,
@@ -223,16 +222,9 @@ def main(xlsx_path: str):
             'tracking_link':     str(tracking_link) if tracking_link else None,
             'acc_no':            acc_no,
             'trial':             str(trial) if trial else None,
-            'views_gained':      views_gained,
-            'datetrackinglink':  datetrack,
-            'thumbnail':         str(thumbnail) if thumbnail else None,
             'is_shared_to_feed': shared_feed,
-            'curr_vert':         str(curr_vert) if curr_vert else None,
             'user_id':           user_id,
             'talent_manager':    str(talent_mgr) if talent_mgr else None,
-            'curr_user':         str(curr_user) if curr_user else None,
-            'curr_model':        str(curr_model) if curr_model else None,
-            'curr_tm':           str(curr_tm) if curr_tm else None,
             'team':              str(team) if team else None,
         })
 

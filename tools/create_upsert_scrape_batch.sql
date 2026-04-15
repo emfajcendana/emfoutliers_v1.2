@@ -1,6 +1,11 @@
 -- Run this once in the Supabase SQL Editor.
 -- Creates a function that upserts a JSON batch into scrape_data with a
 -- 120-second statement timeout — overrides the service_role default (8s).
+--
+-- Dropped columns (no longer in scrape_data):
+--   model_code, views_gained, datetrackinglink, thumbnail,
+--   curr_vert, curr_user, curr_model, curr_tm
+-- caption is kept.
 
 CREATE OR REPLACE FUNCTION upsert_scrape_batch(batch jsonb)
 RETURNS void
@@ -11,10 +16,9 @@ BEGIN
   INSERT INTO scrape_data (
     row_key, post_url, post_id, post_timestamp, content_type, caption,
     verticals, comments, likes, views, scrape_date, username,
-    model_code, model_stage_name, x_score, followers, employee,
-    tracking_link, acc_no, trial, views_gained, datetrackinglink,
-    thumbnail, is_shared_to_feed, curr_vert, user_id, talent_manager,
-    curr_user, curr_model, curr_tm, team
+    model_stage_name, x_score, followers, employee,
+    tracking_link, acc_no, trial, is_shared_to_feed,
+    user_id, talent_manager, team
   )
   SELECT
     r.row_key,
@@ -29,7 +33,6 @@ BEGIN
     (r.views)::float8,
     (r.scrape_date)::date,
     r.username,
-    r.model_code,
     r.model_stage_name,
     (r.x_score)::float8,
     (r.followers)::float8,
@@ -37,16 +40,9 @@ BEGIN
     r.tracking_link,
     (r.acc_no)::bigint,
     r.trial,
-    (r.views_gained)::float8,
-    r.datetrackinglink,
-    r.thumbnail,
     (r.is_shared_to_feed)::boolean,
-    r.curr_vert,
     (r.user_id)::bigint,
     r.talent_manager,
-    r.curr_user,
-    r.curr_model,
-    r.curr_tm,
     r.team
   FROM jsonb_to_recordset(batch) AS r(
     row_key          text,
@@ -61,7 +57,6 @@ BEGIN
     views            float8,
     scrape_date      text,
     username         text,
-    model_code       text,
     model_stage_name text,
     x_score          float8,
     followers        float8,
@@ -69,16 +64,9 @@ BEGIN
     tracking_link    text,
     acc_no           bigint,
     trial            text,
-    views_gained     float8,
-    datetrackinglink text,
-    thumbnail        text,
     is_shared_to_feed boolean,
-    curr_vert        text,
     user_id          bigint,
     talent_manager   text,
-    curr_user        text,
-    curr_model       text,
-    curr_tm          text,
     team             text
   )
   ON CONFLICT (row_key) DO UPDATE SET
@@ -93,7 +81,6 @@ BEGIN
     views             = EXCLUDED.views,
     scrape_date       = EXCLUDED.scrape_date,
     username          = EXCLUDED.username,
-    model_code        = EXCLUDED.model_code,
     model_stage_name  = EXCLUDED.model_stage_name,
     x_score           = EXCLUDED.x_score,
     followers         = EXCLUDED.followers,
@@ -101,16 +88,9 @@ BEGIN
     tracking_link     = EXCLUDED.tracking_link,
     acc_no            = EXCLUDED.acc_no,
     trial             = EXCLUDED.trial,
-    views_gained      = EXCLUDED.views_gained,
-    datetrackinglink  = EXCLUDED.datetrackinglink,
-    thumbnail         = EXCLUDED.thumbnail,
     is_shared_to_feed = EXCLUDED.is_shared_to_feed,
-    curr_vert         = EXCLUDED.curr_vert,
     user_id           = EXCLUDED.user_id,
     talent_manager    = EXCLUDED.talent_manager,
-    curr_user         = EXCLUDED.curr_user,
-    curr_model        = EXCLUDED.curr_model,
-    curr_tm           = EXCLUDED.curr_tm,
     team              = EXCLUDED.team;
 END;
 $$;

@@ -1,0 +1,146 @@
+{
+  "name": "Google Sheets Daily Scrape Import",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-640, 0],
+      "id": "node-schedule-trigger",
+      "name": "Daily 8AM Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getRows",
+        "documentId": {
+          "__rl": true,
+          "value": "18i2vysyRw_JwELs7xd_aPGyO4VfiHaoHvOAefHrCnzw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "options": {
+          "headerRow": 1
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-400, 0],
+      "id": "node-read-sheet",
+      "name": "Read Scrape Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_OAUTH_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── EMF Scrape Sheet → Supabase Transform ─────────────────────────────────\n// Reads rows by COLUMN INDEX (0-based) matching the actual Google Sheet\n// column order. Dropped/unused columns are read but discarded.\n//\n// Sheet column map (25 columns — current daily scrape sheet):\n//  0  post_url\n//  1  post_id\n//  2  post_timestamp\n//  3  content_type\n//  4  caption\n//  5  verticals          (Assigned Vertical)\n//  6  comments\n//  7  likes\n//  8  views\n//  9  scrape_date\n//  10 username\n//  11 model_code         ← DROPPED, skip\n//  12 model_stage_name   (Model Stage Name)\n//  13 x_score            (X-score)\n//  14 followers\n//  15 employee           (Employee)\n//  16 tracking_link      (Tracking Link)\n//  17 acc_no             (Acc. No.)\n//  18 trial              (trial?)\n//  19 thumbnail          ← DROPPED, skip\n//  20 is_shared_to_feed  (is_shared_to_feed?)\n//  21 shortcode          ← not in DB, skip\n//  22 user_id            (userId)\n//  23 talent_manager     (Talent Manager)\n//  24 team               (Team)\n\nfunction parseDate(val) {\n  if (!val) return null;\n  if (val instanceof Date) {\n    const y = val.getFullYear();\n    const m = String(val.getMonth() + 1).padStart(2, '0');\n    const d = String(val.getDate()).padStart(2, '0');\n    return `${y}-${m}-${d}`;\n  }\n  const s = String(val).trim().slice(0, 10);\n  // ISO format\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n  // DD/MM/YYYY or MM/DD/YYYY\n  const parts = s.split('/');\n  if (parts.length === 3) {\n    const [a, b, yr] = [parseInt(parts[0]), parseInt(parts[1]), parts[2]];\n    if (a > 12) return `${yr}-${String(b).padStart(2,'0')}-${String(a).padStart(2,'0')}`;\n    if (b > 12) return `${yr}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;\n    // Ambiguous: assume DD/MM/YYYY\n    return `${yr}-${String(b).padStart(2,'0')}-${String(a).padStart(2,'0')}`;\n  }\n  return null;\n}\n\nfunction toFloat(val) {\n  if (val === null || val === undefined || val === '') return null;\n  const f = parseFloat(val);\n  return isFinite(f) ? f : null;\n}\n\nfunction toInt(val) {\n  const f = toFloat(val);\n  return f !== null ? Math.round(f) : null;\n}\n\nconst BATCH_SIZE = 100;\nconst rows = $input.all();\nconst batches = [];\nlet buffer = [];\nlet skipped = 0;\n\nfor (const item of rows) {\n  // Google Sheets node returns rows as objects keyed by header name.\n  // We need values by position — get the raw values array.\n  const vals = Object.values(item.json);\n  // Pad to 25 columns\n  while (vals.length < 25) vals.push(null);\n\n  const username   = vals[10] ? String(vals[10]).trim() : null;\n  const scrapeDate = parseDate(vals[9]);\n\n  // Skip rows missing required fields\n  if (!username || !scrapeDate) {\n    skipped++;\n    continue;\n  }\n\n  const rawPostId = vals[1];\n  let postId = rawPostId ? String(rawPostId).trim() : null;\n  if (postId && ['none', ''].includes(postId.toLowerCase())) postId = null;\n\n  const rowKey = postId\n    ? `${postId}__${scrapeDate}`\n    : `acct__${username}__${scrapeDate}`;\n\n  const employee = vals[15] && String(vals[15]).trim() !== '-'\n    ? String(vals[15]).trim()\n    : null;\n\n  buffer.push({\n    row_key:           rowKey,\n    post_url:          vals[0]  ? String(vals[0])  : null,\n    post_id:           postId,\n    post_timestamp:    parseDate(vals[2]),\n    content_type:      vals[3]  ? String(vals[3])  : null,\n    caption:           vals[4]  ? String(vals[4])  : null,\n    verticals:         vals[5]  ? String(vals[5])  : null,\n    comments:          toFloat(vals[6]),\n    likes:             toFloat(vals[7]),\n    views:             toFloat(vals[8]) ?? 0,\n    scrape_date:       scrapeDate,\n    username:          username,\n    // col 11 model_code  — skipped (dropped from DB)\n    model_stage_name:  vals[12] ? String(vals[12]) : null,\n    x_score:           toFloat(vals[13]),\n    followers:         toFloat(vals[14]),\n    employee:          employee,\n    tracking_link:     vals[16] ? String(vals[16]) : null,\n    acc_no:            toInt(vals[17]),\n    trial:             vals[18] ? String(vals[18]) : null,\n    // col 19 thumbnail        — skipped (dropped from DB)\n    is_shared_to_feed: vals[20] != null ? Boolean(vals[20]) : null,\n    // col 21 shortcode        — skipped (not in DB)\n    user_id:           toInt(vals[22]),\n    talent_manager:    vals[23] ? String(vals[23]) : null,\n    team:              vals[24] ? String(vals[24]) : null,\n  });\n\n  if (buffer.length >= BATCH_SIZE) {\n    batches.push([...buffer]);\n    buffer = [];\n  }\n}\n\nif (buffer.length > 0) batches.push(buffer);\n\nconsole.log(`Rows processed: ${rows.length}, skipped: ${skipped}, batches: ${batches.length}`);\n\n// Output one item per batch so the loop node iterates over batches\nreturn batches.map((batch, i) => ({ json: { batchIndex: i + 1, totalBatches: batches.length, rows: batch } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 0],
+      "id": "node-transform",
+      "name": "Transform + Batch Rows"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [80, 0],
+      "id": "node-loop",
+      "name": "Loop Over Batches"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_scrape_batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "batch",
+              "value": "={{ JSON.stringify($json.rows) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 0],
+      "id": "node-upsert",
+      "name": "Upsert Batch to Supabase"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/refresh_materialized_views",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [560, 0],
+      "id": "node-refresh",
+      "name": "Refresh Materialized Views"
+    }
+  ],
+  "connections": {
+    "Daily 8AM Trigger": {
+      "main": [[{ "node": "Read Scrape Sheet", "type": "main", "index": 0 }]]
+    },
+    "Read Scrape Sheet": {
+      "main": [[{ "node": "Transform + Batch Rows", "type": "main", "index": 0 }]]
+    },
+    "Transform + Batch Rows": {
+      "main": [[{ "node": "Loop Over Batches", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Batches": {
+      "main": [
+        [{ "node": "Upsert Batch to Supabase", "type": "main", "index": 0 }],
+        [{ "node": "Refresh Materialized Views", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upsert Batch to Supabase": {
+      "main": [[{ "node": "Loop Over Batches", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

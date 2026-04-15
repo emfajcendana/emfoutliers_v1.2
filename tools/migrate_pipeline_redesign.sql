@@ -1,106 +1,78 @@
 -- ============================================================
--- EMF Instagram Tracking - Supabase Schema (flat table)
--- Run this in the Supabase SQL editor
+-- EMF Pipeline Redesign — Safe Migration Script
+-- Run this in the Supabase SQL Editor (NOT schema.sql).
+-- schema.sql has DROP TABLE which would destroy all data.
+-- This script ONLY alters structure, never drops rows.
+--
+-- What this does:
+--   1. Drop dependent views/MVs (no data — safe to drop/recreate)
+--   2. Drop 8 columns from scrape_data (other columns + rows untouched)
+--   3. Create new materialized views (mv_userid_curr, mv_username_curr_vert)
+--   4. Rebuild mv_post_latest (ROW_NUMBER + LAG for views_gained)
+--   5. Rebuild mv_account_median
+--   6. Recreate all views with updated joins
+--   7. Update refresh_materialized_views() RPC + trigger function
+--   8. Update get_winner_stats() RPC
+--   9. VACUUM FULL scrape_data to reclaim freed column storage
+--
+-- curr_model is derived automatically from the most recent model_stage_name
+-- per user_id in mv_userid_curr — no account_model table needed.
+--
+-- Before running: take a manual backup in Supabase Dashboard → Settings → Backups.
+-- Safe to re-run from the top at any time.
 -- ============================================================
 
+
 -- ============================================================
--- DROP OLD OBJECTS (safe to re-run)
+-- STEP 1: Drop all dependent views and materialized views
+-- These contain no raw data — safe to drop and recreate.
+-- ORDER matters: drop child objects before parents.
 -- ============================================================
 
 DROP VIEW IF EXISTS v_winner_stats_account    CASCADE;
 DROP VIEW IF EXISTS v_winner_stats_model      CASCADE;
 DROP VIEW IF EXISTS v_views_timeline          CASCADE;
 DROP VIEW IF EXISTS v_top_reels               CASCADE;
+DROP VIEW IF EXISTS v_filter_options          CASCADE;
+DROP VIEW IF EXISTS v_post_latest             CASCADE;
+DROP VIEW IF EXISTS v_account_median          CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_account_median      CASCADE;
-DROP VIEW IF EXISTS v_account_median                    CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_post_latest         CASCADE;
-DROP VIEW IF EXISTS v_post_latest                       CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_username_curr_vert  CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS mv_userid_curr         CASCADE;
+DROP TABLE IF EXISTS account_model                      CASCADE;
 
-DROP TABLE IF EXISTS account_model CASCADE;
-DROP TABLE IF EXISTS post_scrapes  CASCADE;
-DROP TABLE IF EXISTS posts         CASCADE;
-DROP TABLE IF EXISTS accounts      CASCADE;
-DROP TABLE IF EXISTS models        CASCADE;
-DROP TABLE IF EXISTS scrape_data   CASCADE;
 
 -- ============================================================
--- FLAT TABLE
--- Dropped columns: model_code, views_gained, datetrackinglink,
---   thumbnail, curr_vert, curr_user, curr_model, curr_tm
--- These are now derived from materialized views / account_model.
--- caption is kept for now.
+-- STEP 2: Drop the 8 columns from scrape_data
+-- ALL rows and all other columns are fully preserved.
 -- ============================================================
 
-CREATE TABLE scrape_data (
-  id                UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
-  row_key           TEXT        NOT NULL UNIQUE,  -- stable upsert key
+ALTER TABLE scrape_data
+  DROP COLUMN IF EXISTS curr_vert,
+  DROP COLUMN IF EXISTS curr_user,
+  DROP COLUMN IF EXISTS curr_model,
+  DROP COLUMN IF EXISTS curr_tm,
+  DROP COLUMN IF EXISTS views_gained,
+  DROP COLUMN IF EXISTS model_code,
+  DROP COLUMN IF EXISTS datetrackinglink,
+  DROP COLUMN IF EXISTS thumbnail;
 
-  post_url          TEXT,
-  post_id           TEXT,                          -- Instagram numeric post ID
-  post_timestamp    DATE,                          -- "Pool Date"
-  content_type      TEXT,
-  caption           TEXT,
-  verticals         TEXT,                          -- comma-separated string (historical)
-  comments          NUMERIC,
-  likes             NUMERIC,
-  views             NUMERIC     DEFAULT 0,
-  scrape_date       DATE,
-  username          TEXT,
-  model_stage_name  TEXT,
-  x_score           NUMERIC,
-  followers         NUMERIC,
-  employee          TEXT,
-  tracking_link     TEXT,
-  acc_no            SMALLINT,
-  trial             TEXT,                          -- 'Normal Reel', 'Trial Reel', NULL
-  is_shared_to_feed BOOLEAN,
-  user_id           BIGINT,
-  talent_manager    TEXT,
-  team              TEXT,
-
-  -- Operational column — used by the n8n automation
-  transferred       BOOLEAN     DEFAULT FALSE,
-
-  created_at        TIMESTAMPTZ DEFAULT NOW()
-);
 
 -- ============================================================
--- account_model: source of truth for user_id → current model.
--- Update this table when an account is repurposed to a new model.
+-- STEP 3: New derived materialized views
+--
+-- mv_userid_curr: current username, talent manager, AND model
+-- per user_id — all derived from the most recent scrape row.
+-- curr_model auto-updates on each daily import: no manual table.
 -- ============================================================
 
-CREATE TABLE account_model (
-  user_id     BIGINT  PRIMARY KEY,
-  model_name  TEXT    NOT NULL REFERENCES model_config(model_name),
-  notes       TEXT    -- e.g. "repurposed from Model X on 2026-04-01"
-);
-
--- ============================================================
--- INDEXES ON scrape_data
--- ============================================================
-
-CREATE INDEX idx_scrape_data_post_id      ON scrape_data (post_id)      WHERE post_id IS NOT NULL;
-CREATE INDEX idx_scrape_data_scrape_date  ON scrape_data (scrape_date);
-CREATE INDEX idx_scrape_data_username     ON scrape_data (username);
-CREATE INDEX idx_scrape_data_user_id      ON scrape_data (user_id)      WHERE user_id IS NOT NULL;
-CREATE INDEX idx_scrape_data_transferred  ON scrape_data (transferred)  WHERE transferred = FALSE;
-CREATE INDEX idx_scrape_data_post_scrape  ON scrape_data (post_id, scrape_date DESC) WHERE post_id IS NOT NULL;
-CREATE INDEX idx_scrape_data_post_ts      ON scrape_data (post_timestamp) WHERE post_timestamp IS NOT NULL;
-
--- ============================================================
--- DERIVED MATERIALIZED VIEWS
--- Refreshed before mv_post_latest in refresh_materialized_views().
--- ============================================================
-
--- mv_userid_curr: current username + talent manager per user_id.
--- Derived from the most recent scrape row for each user_id.
 CREATE MATERIALIZED VIEW mv_userid_curr AS
 SELECT DISTINCT ON (user_id)
   user_id,
-  username       AS curr_user,
-  talent_manager AS curr_tm
+  username         AS curr_user,
+  talent_manager   AS curr_tm,
+  model_stage_name AS curr_model
 FROM scrape_data
 WHERE user_id IS NOT NULL
 ORDER BY user_id, scrape_date DESC;
@@ -108,8 +80,7 @@ ORDER BY user_id, scrape_date DESC;
 CREATE UNIQUE INDEX idx_mv_userid_curr ON mv_userid_curr (user_id);
 
 
--- mv_username_curr_vert: current vertical per username.
--- Derived from the most recent scrape row that has a non-null verticals value.
+-- mv_username_curr_vert: current vertical per username
 CREATE MATERIALIZED VIEW mv_username_curr_vert AS
 SELECT DISTINCT ON (username)
   username,
@@ -122,9 +93,9 @@ CREATE UNIQUE INDEX idx_mv_username_curr_vert ON mv_username_curr_vert (username
 
 
 -- ============================================================
--- mv_post_latest: most recent scrape row per post, pre-computed.
--- Uses ROW_NUMBER() so the views_gained LAG window function works
--- alongside the latest-row selection.
+-- STEP 4: Rebuild mv_post_latest
+-- Uses ROW_NUMBER() so views_gained LAG window works alongside
+-- the latest-row selection.
 -- ============================================================
 
 CREATE MATERIALIZED VIEW mv_post_latest AS
@@ -164,36 +135,14 @@ WITH ranked AS (
   WHERE post_id IS NOT NULL
 )
 SELECT
-  id,
-  row_key,
-  post_url,
-  post_id,
-  post_timestamp,
-  content_type,
-  caption,
-  verticals,
-  comments,
-  likes,
-  views,
-  scrape_date,
-  username,
-  model_stage_name,
-  x_score,
-  followers,
-  employee,
-  tracking_link,
-  acc_no,
-  trial,
-  is_shared_to_feed,
-  user_id,
-  talent_manager,
-  team,
-  transferred,
-  views_gained
+  id, row_key, post_url, post_id, post_timestamp, content_type,
+  caption, verticals, comments, likes, views, scrape_date, username,
+  model_stage_name, x_score, followers, employee, tracking_link,
+  acc_no, trial, is_shared_to_feed, user_id, talent_manager, team,
+  transferred, views_gained
 FROM ranked
 WHERE rn = 1;
 
--- Indexes on mv_post_latest
 CREATE UNIQUE INDEX idx_mv_post_latest_post_id    ON mv_post_latest (post_id);
 CREATE INDEX idx_mv_post_latest_username          ON mv_post_latest (username);
 CREATE INDEX idx_mv_post_latest_post_ts           ON mv_post_latest (post_timestamp);
@@ -205,7 +154,10 @@ CREATE INDEX idx_mv_post_latest_user_id           ON mv_post_latest (user_id);
 CREATE INDEX idx_mv_post_latest_transferred       ON mv_post_latest (transferred) WHERE transferred = FALSE;
 
 
--- mv_account_median: median views per account.
+-- ============================================================
+-- STEP 5: Rebuild mv_account_median (depends on mv_post_latest)
+-- ============================================================
+
 CREATE MATERIALIZED VIEW mv_account_median AS
 SELECT
   username,
@@ -217,10 +169,10 @@ CREATE UNIQUE INDEX idx_mv_account_median_username ON mv_account_median (usernam
 
 
 -- ============================================================
--- VIEWS
+-- STEP 6: Recreate all views
 -- ============================================================
 
--- v_filter_options: distinct QM/TM/team/vertical combos for active models.
+-- v_filter_options
 CREATE OR REPLACE VIEW v_filter_options AS
 SELECT DISTINCT
   CASE pl.employee
@@ -240,9 +192,9 @@ SELECT DISTINCT
   pl.team,
   ucv.curr_vert
 FROM mv_post_latest pl
-JOIN model_config mc             ON mc.model_name  = pl.model_stage_name
-LEFT JOIN mv_userid_curr uc      ON uc.user_id     = pl.user_id
-LEFT JOIN mv_username_curr_vert ucv ON ucv.username = pl.username
+JOIN model_config mc                ON mc.model_name  = pl.model_stage_name
+LEFT JOIN mv_userid_curr uc         ON uc.user_id     = pl.user_id
+LEFT JOIN mv_username_curr_vert ucv ON ucv.username   = pl.username
 WHERE mc.is_active = TRUE;
 
 
@@ -256,8 +208,7 @@ SELECT username, median_views FROM mv_account_median;
 
 
 -- v_top_reels: fully denormalized — used by n8n automation and dashboard.
--- curr_* fields derived from mv_userid_curr, mv_username_curr_vert, account_model.
--- curr_model is NULL when the account has been repurposed to a different model.
+-- curr_model derived from mv_userid_curr (most recent model_stage_name per user_id).
 -- Note for n8n: PATCH scrape_data?post_id=eq.{post_id} to set transferred=true
 CREATE OR REPLACE VIEW v_top_reels AS
 SELECT
@@ -281,10 +232,7 @@ SELECT
   pl.user_id,
   pl.tracking_link,
   pl.model_stage_name                                       AS model,
-  CASE
-    WHEN am.model_name = pl.model_stage_name THEN pl.model_stage_name
-    ELSE NULL
-  END                                                       AS curr_model,
+  uc.curr_model,
   pl.team,
   pl.views,
   pl.likes,
@@ -323,12 +271,10 @@ SELECT
 FROM mv_post_latest pl
 JOIN mv_account_median              med ON med.username  = pl.username
 LEFT JOIN mv_username_curr_vert     ucv ON ucv.username  = pl.username
-LEFT JOIN mv_userid_curr            uc  ON uc.user_id    = pl.user_id
-LEFT JOIN account_model             am  ON am.user_id    = pl.user_id;
+LEFT JOIN mv_userid_curr            uc  ON uc.user_id    = pl.user_id;
 
 
--- v_views_timeline: one row per post × scrape_date for view-count growth charts.
--- views_gained = views on this scrape minus views on the previous scrape for same post.
+-- v_views_timeline: one row per post × scrape_date for growth charts.
 CREATE OR REPLACE VIEW v_views_timeline AS
 SELECT
   sd.scrape_date,
@@ -351,7 +297,7 @@ WHERE sd.post_id        IS NOT NULL
 ORDER BY sd.post_timestamp, sd.scrape_date, sd.username;
 
 
--- v_winner_stats_model: winner count and rate by model
+-- v_winner_stats_model
 CREATE OR REPLACE VIEW v_winner_stats_model AS
 SELECT
   pl.model_stage_name                                       AS model,
@@ -367,7 +313,7 @@ GROUP BY pl.model_stage_name, pl.team
 ORDER BY winner_count DESC;
 
 
--- v_winner_stats_account: winner count and rate by account
+-- v_winner_stats_account
 CREATE OR REPLACE VIEW v_winner_stats_account AS
 SELECT
   pl.username,
@@ -403,10 +349,7 @@ ORDER BY winner_count DESC;
 
 
 -- ============================================================
--- RPC: refresh_materialized_views
--- Refresh order: derived MVs first, then mv_post_latest, then mv_account_median.
--- Called by import scripts after each run via supabase.rpc().
--- Requires service_role key.
+-- STEP 7: Update refresh_materialized_views() RPC
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION refresh_materialized_views()
@@ -424,10 +367,7 @@ END;
 $$;
 
 
--- ============================================================
--- TRIGGER: auto-refresh materialized views on scrape_data changes
--- ============================================================
-
+-- Update trigger function to use same refresh order
 CREATE OR REPLACE FUNCTION trigger_refresh_materialized_views()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -443,15 +383,9 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE TRIGGER trg_refresh_mv_after_scrape_data
-AFTER INSERT OR UPDATE OR DELETE ON scrape_data
-FOR EACH STATEMENT
-EXECUTE FUNCTION trigger_refresh_materialized_views();
-
 
 -- ============================================================
--- RPC: get_winner_stats
--- Filters now join mv_userid_curr (for tm) and mv_username_curr_vert (for vertical).
+-- STEP 8: Update get_winner_stats() RPC
 -- ============================================================
 
 DROP FUNCTION IF EXISTS get_winner_stats(DATE,DATE,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT[]);
@@ -530,7 +464,9 @@ $$;
 
 
 -- ============================================================
--- ROW LEVEL SECURITY (optional — enable when ready)
+-- STEP 9: Reclaim storage freed by the 8 dropped columns.
+-- VACUUM FULL rewrites the table — takes a lock, but no data lost.
+-- Run during off-hours if possible.
 -- ============================================================
--- ALTER TABLE scrape_data ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "public read" ON scrape_data FOR SELECT USING (true);
+
+VACUUM FULL scrape_data;
